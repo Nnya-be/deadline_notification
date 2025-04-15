@@ -30,7 +30,7 @@ jobs:
       - name: Build SAM Application
         run: |
           mvn clean package
-          sam build --use-container
+          sam build
 
       - name: Debug - Check Files
         run: |
