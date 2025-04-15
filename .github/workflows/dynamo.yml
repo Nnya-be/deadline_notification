@@ -28,11 +28,6 @@ jobs:
           pip install aws-sam-cli
           sam build
 
-      - name: Debug - Check Files
-        run: |
-          pwd
-          ls -la
-
       - name: Deploy DynamoDB Stack
         run: |
           sam deploy --template-file template.yml \
