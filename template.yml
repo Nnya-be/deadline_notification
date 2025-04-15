@@ -28,7 +28,7 @@ Resources:
     Properties:
       Handler: com.handler.CreateDeadlineEvent::handleRequest
       Runtime: java17
-      CodeUri: ./src
+      CodeUri: ./
       MemorySize: 512
       Timeout: 30
       Policies:
