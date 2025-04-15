@@ -26,7 +26,7 @@ Resources:
   CreateDeadlineEventLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: com.handler.CreateDeadlineEvent::handleRequest
+      Handler: com.StreamLambdaHandler::handleRequest
       Runtime: java17
       CodeUri: ./
       MemorySize: 512
