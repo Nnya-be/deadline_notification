@@ -1,26 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AWS Serverless Spring Boot 2 API - com::dealine_notification
-Globals:
-  Api:
-    EndpointConfiguration: REGIONAL
+Description: SAM template for TasksTable with DynamoDB Streams and CreateDeadlineEvent Lambda
 
 Resources:
-  Dealine_notificationFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: com.StreamLambdaHandler::handleRequest
-      Runtime: java21
-      CodeUri: .
-      MemorySize: 512
-      Policies: AWSLambdaBasicExecutionRole
-      Timeout: 30
-      Events:
-        ProxyResource:
-          Type: Api
-          Properties:
-            Path: /{proxy+}
-            Method: any
   TasksTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -32,53 +14,83 @@ Resources:
         - AttributeName: taskId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: false
-      StreamSpecification:
-        StreamViewType: NEW_AND_OLD_IMAGES
       Tags:
         - Key: Environment
           Value: Production
 
-    TasksTablePolicy:
-      Type: AWS::IAM::Policy
-      Properties:
-        PolicyName: TasksTableAccessPolicy
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
+  CreateDeadlineEventLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: com.handler.CreateDeadlineEvent::handleRequest
+      Runtime: java17
+      CodeUri: ./src
+      MemorySize: 512
+      Timeout: 30
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasksTable
+        - Statement:
             - Effect: Allow
               Action:
-                - dynamodb:PutItem
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-                - dynamodb:DeleteItem
-                - dynamodb:Query
-                - dynamodb:Scan
-                - dynamodb:BatchGetItem
-                - dynamodb:BatchWriteItem
-              Resource: !GetAtt TasksTable.Arn
-        Roles:
-          - !Ref TasksTableRole
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+              Resource: !GetAtt TasksTable.StreamArn
+            - Effect: Allow
+              Action:
+                - scheduler:CreateSchedule
+                - iam:PassRole
+              Resource:
+                - "*"
+      Environment:
+        Variables:
+          TARGET_LAMBDA_ARN: "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda"
+          SCHEDULER_ROLE_ARN: "arn:aws:iam::123456789012:role/EventBridgeSchedulerRole"
+      Events:
+        DynamoStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt TasksTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+            Enabled: true
 
-    TasksTableRole:
-      Type: AWS::IAM::Role
-      Properties:
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action:
-                - sts:AssumeRole
-        ManagedPolicyArns:
-          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  EventBridgeSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - scheduler.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda"
+
 Outputs:
-  Dealine_notificationApi:
-    Description: URL for application
-    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/ping'
-    Export:
-      Name: Dealine_notificationApi
+  TasksTableArn:
+    Description: ARN of the TasksTable
+    Value: !GetAtt TasksTable.Arn
+  TasksTableStreamArn:
+    Description: ARN of the TasksTable Stream
+    Value: !GetAtt TasksTable.StreamArn
+  CreateDeadlineEventLambdaArn:
+    Description: ARN of the CreateDeadlineEvent Lambda
+    Value: !GetAtt CreateDeadlineEventLambda.Arn
