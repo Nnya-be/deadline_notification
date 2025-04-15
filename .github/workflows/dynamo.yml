@@ -26,7 +26,7 @@ jobs:
       - name: Install AWS SAM CLI and Build Project
         run: |
           pip install aws-sam-cli
-          sam build
+          sam build --use-container
 
       - name: Debug - Check Files
         run: |
