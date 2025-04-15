@@ -1,36 +1,58 @@
-apply plugin: 'java'
+plugins {
+  id 'java'
+}
+
+group = 'com'
+version = '1.0-SNAPSHOT'
+sourceCompatibility = '17'
 
 repositories {
-  mavenLocal()
   mavenCentral()
-  maven {url "https://repo.spring.io/milestone"}
-  maven {url "https://repo.spring.io/snapshot"}
+  mavenLocal()
+  maven { url "https://repo.spring.io/milestone" }
+  maven { url "https://repo.spring.io/snapshot" }
 }
 
 dependencies {
-  implementation (
-          'org.springframework.boot:spring-boot-starter-web:3.4.2',
-          'com.amazonaws.serverless:aws-serverless-java-container-springboot3:[2.0-SNAPSHOT,)',
-  )
-
-  testImplementation("com.amazonaws.serverless:aws-serverless-java-container-core:[2.0-SNAPSHOT,):tests")
-  testImplementation("org.apache.httpcomponents.client5:httpclient5:5.4.2")
-  testImplementation(platform("org.junit:junit-bom:5.11.4"))
-  testImplementation("org.junit.jupiter:junit-jupiter")
-}
-
-task buildZip(type: Zip) {
-  from compileJava
-  from processResources
-  into('lib') {
-    from(configurations.compileClasspath) {
-      exclude 'tomcat-embed-*'
-    }
+  // Spring Boot web starter (without embedded Tomcat)
+  implementation('org.springframework.boot:spring-boot-starter-web:3.4.2') {
+    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-tomcat'
   }
+
+  // AWS Lambda container support
+  implementation 'com.amazonaws.serverless:aws-serverless-java-container-springboot3:2.1.2'
+  testImplementation 'com.amazonaws.serverless:aws-serverless-java-container-core:2.1.2'
+
+  // AWS Lambda events
+  implementation 'com.amazonaws:aws-lambda-java-events:3.12.0'
+
+  // AWS SDKs
+  implementation 'software.amazon.awssdk:scheduler:2.26.29'
+  implementation 'com.amazonaws:aws-java-sdk-dynamodb:1.12.660'
+
+  // HTTP Client for tests
+  testImplementation 'org.apache.httpcomponents.client5:httpclient5:5.4.2'
+
+  // JUnit 5 with BOM
+  testImplementation platform('org.junit:junit-bom:5.11.4')
+  testImplementation 'org.junit.jupiter:junit-jupiter'
 }
 
 test {
   useJUnitPlatform()
+}
+
+// Package task for Lambda deployment (like maven-shade)
+task buildZip(type: Zip) {
+  archiveBaseName.set(project.name)
+  destinationDirectory.set(file("$buildDir/distributions"))
+  from compileJava
+  from processResources
+  into('lib') {
+    from(configurations.runtimeClasspath) {
+      exclude 'tomcat-embed-*'
+    }
+  }
 }
 
 build.dependsOn buildZip
