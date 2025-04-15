@@ -28,7 +28,7 @@ Resources:
     Properties:
       Handler: com.StreamLambdaHandler::handleRequest
       Runtime: java17
-      CodeUri: .
+      CodeUri: /
       MemorySize: 512
       Timeout: 30
       Policies:
