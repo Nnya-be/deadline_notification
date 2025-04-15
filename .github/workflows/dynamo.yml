@@ -35,4 +35,4 @@ jobs:
         run: |
           sam deploy --template-file template.yml \
               --stack-name dynamodb-stack \
-              --capabilities CAPABILITY_IAM
+              --capabilities CAPABILITY_IAM --resolve-s3
