@@ -261,7 +261,6 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-TasksTableName"
 
-
   TasksTableArn:
     Description: ARN of the TasksTable
     Value: !GetAtt TasksTable.Arn
