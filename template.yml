@@ -156,7 +156,7 @@ Resources:
             Enabled: true
             FilterCriteria:
               Filters:
-                - Pattern: '{"dynamodb": {"NewImage": {"status": {"S": ["CREATED"]}}}}'
+                - Pattern: '{"dynamodb": {"NewImage": {"status": {"S": ["CREATED", "UPDATED"]}}}}'
 
   ReminderProcessorLambda:
     Type: AWS::Serverless::Function
@@ -260,6 +260,7 @@ Outputs:
     Value: !Ref TasksTable
     Export:
       Name: !Sub "${AWS::StackName}-TasksTableName"
+
 
   TasksTableArn:
     Description: ARN of the TasksTable
