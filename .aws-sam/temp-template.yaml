@@ -1,0 +1,11 @@
+Resources:
+  Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      Timeout: 300
+      MemorySize: 128
+      Handler: com.controller.Common
+      CodeUri: C:\Users\NnyabeChamamme\Desktop\deadline_notification
+      Runtime: java21
+      Architectures:
+        - x86_64

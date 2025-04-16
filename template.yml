@@ -234,6 +234,13 @@ Resources:
               Filters:
                 - Pattern: '{"dynamodb": {"NewImage": {"dueDate": {"S": [{"exists": true}]}}}}'
 
+  CommonLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub CommonLambda-${Environment}
+      Handler: com.controller.Common::handleRequest
+      Description: Common Lambda function for testing
+
   DeadLetterTopic:
     Type: AWS::SNS::Topic
     Properties:
