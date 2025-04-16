@@ -32,7 +32,7 @@ jobs:
 
       - name: Build SAM Application
         run: |
-          sam build --use-container
+          sam build
 
       - name: Debug - Check Files
         run: |
