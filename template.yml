@@ -88,7 +88,7 @@ Resources:
     Properties:
       Handler: com.handler.ReminderProcessorLambda::handleRequest
       Runtime: java17
-      CodeUri: ./src
+      CodeUri: .
       MemorySize: 512
       Timeout: 30
       Environment:
@@ -111,7 +111,7 @@ Resources:
     Properties:
       Handler: com.handler.UpdateTaskScheduleLambda::handleRequest
       Runtime: java17
-      CodeUri: ./src
+      CodeUri: .
       MemorySize: 512
       Timeout: 30
       Environment:
