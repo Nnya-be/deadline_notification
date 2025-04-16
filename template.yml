@@ -83,6 +83,67 @@ Resources:
                   - lambda:InvokeFunction
                 Resource:
                   - "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda"
+  ReminderProcessorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: com.handler.ReminderProcessorLambda::handleRequest
+      Runtime: java17
+      CodeUri: ./src
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          USER_POOL_ID: "us-east-1_ExampleUserPool" # Replace with your Cognito User Pool ID
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: "TasksTable"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+              Resource: "arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_ExampleUserPool"
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: "*" #
+  UpdateTaskScheduleLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: com.handler.UpdateTaskScheduleLambda::handleRequest
+      Runtime: java17
+      CodeUri: ./src
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          TARGET_LAMBDA_ARN: "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda"
+          SCHEDULER_ROLE_ARN: "arn:aws:iam::123456789012:role/EventBridgeSchedulerRole"
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasksTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+              Resource: !GetAtt TasksTable.StreamArn
+            - Effect: Allow
+              Action:
+                - scheduler:CreateSchedule
+                - scheduler:DeleteSchedule
+                - scheduler:GetSchedule
+                - iam:PassRole
+              Resource: "*"
+      Events:
+        DynamoStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt TasksTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+            Enabled: true
 
 Outputs:
   TasksTableArn:
@@ -94,3 +155,9 @@ Outputs:
   CreateDeadlineEventLambdaArn:
     Description: ARN of the CreateDeadlineEvent Lambda
     Value: !GetAtt CreateDeadlineEventLambda.Arn
+  ReminderProcessorLambdaArn:
+    Description: ARN of the ReminderProcessorLambda
+    Value: !GetAtt ReminderProcessorLambda.Arn
+  UpdateTaskScheduleLambdaArn:
+    Description: ARN of the UpdateTaskScheduleLambda
+    Value: !GetAtt UpdateTaskScheduleLambda.Arn
