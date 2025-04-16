@@ -29,6 +29,7 @@ jobs:
 
       - name: Build SAM Application
         run: |
+          cd deadline_notification
           mvn clean package
           sam build --use-container
 
