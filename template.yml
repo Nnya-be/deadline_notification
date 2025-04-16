@@ -32,50 +32,42 @@ Resources:
         - AttributeName: taskId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: false
-      StreamSpecification:
-        StreamViewType: NEW_AND_OLD_IMAGES
       Tags:
         - Key: Environment
           Value: Production
 
-    TasksTablePolicy:
-      Type: AWS::IAM::Policy
+    CreateDeadlineEventLambda:
+      Type: AWS::Serverless::Function
       Properties:
-        PolicyName: TasksTableAccessPolicy
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:PutItem
-                - dynamodb:GetItem
-                - dynamodb:UpdateItem
-                - dynamodb:DeleteItem
-                - dynamodb:Query
-                - dynamodb:Scan
-                - dynamodb:BatchGetItem
-                - dynamodb:BatchWriteItem
-              Resource: !GetAtt TasksTable.Arn
-        Roles:
-          - !Ref TasksTableRole
-
-    TasksTableRole:
-      Type: AWS::IAM::Role
-      Properties:
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action:
-                - sts:AssumeRole
-        ManagedPolicyArns:
-          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Handler: com.example.CreateDeadlineEvent::handleRequest
+        Runtime: java17
+        CodeUri: ./src
+        MemorySize: 512
+        Timeout: 30
+        Policies:
+          - DynamoDBReadPolicy:
+              TableName: !Ref TasksTable
+          - Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+                Resource: !GetAtt TasksTable.StreamArn
+        Events:
+          DynamoStream:
+            Type: DynamoDB
+            Properties:
+              Stream: !GetAtt TasksTable.StreamArn
+              StartingPosition: LATEST
+              BatchSize: 10
+              Enabled: true
 Outputs:
   Dealine_notificationApi:
     Description: URL for application
