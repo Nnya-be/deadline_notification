@@ -155,11 +155,10 @@ Resources:
             Stream: !GetAtt TasksTable.StreamArn
             StartingPosition: LATEST
             BatchSize: 10
-            MaximumBatchingWindowInSeconds: 3
             Enabled: true
             FilterCriteria:
               Filters:
-                - Pattern: '{"dynamodb": {"NewImage": {"status": {"S": ["CREATED", "UPDATED"]}}}}'
+                - Pattern: '{"dynamodb": {"NewImage": {"status": {"S": ["CREATED"]}}}}'
 
   ReminderProcessorLambda:
     Type: AWS::Serverless::Function
