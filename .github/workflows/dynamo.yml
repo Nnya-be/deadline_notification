@@ -3,7 +3,8 @@ name: Deploy SAM Template
 on:
   push:
     branches:
-      - main
+      - master
+
 permissions:
   id-token: write
   contents: read
@@ -22,17 +23,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
 
-      - name: Install AWS SAM CLI
+      - name: Install AWS SAM CLI and Build Project
         run: |
           pip install aws-sam-cli
+
+      - name: Build SAM Application
+        run: |
+          mvn clean package
+          sam build --use-container
 
       - name: Debug - Check Files
         run: |
           pwd
           ls -la
 
-      - name: Deploy DynamoDB Table
+      - name: Deploy DynamoDB Stack
         run: |
           sam deploy --template-file template.yml \
               --stack-name dynamodb-stack \
-              --capabilities CAPABILITY_IAM
+              --capabilities CAPABILITY_IAM \
+              --resolve-s3 \
+              --no-confirm-changeset \
+              --no-fail-on-empty-changeset

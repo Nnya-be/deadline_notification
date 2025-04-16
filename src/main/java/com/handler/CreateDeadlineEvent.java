@@ -4,7 +4,7 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.DynamodbEvent;
 import com.amazonaws.services.lambda.runtime.events.DynamodbEvent.DynamodbStreamRecord;
-import com.amazonaws.services.dynamodbv2.model.AttributeValue;
+import com.amazonaws.services.lambda.runtime.events.models.dynamodb.AttributeValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.scheduler.SchedulerClient;
@@ -22,13 +22,17 @@ import java.util.Map;
 public class CreateDeadlineEvent implements RequestHandler<DynamodbEvent, Void> {
 
     private static final Logger logger = LoggerFactory.getLogger(CreateDeadlineEvent.class);
+    // ARN of the target Lambda for reminders (replace with actual ARN)
     private static final String TARGET_LAMBDA_ARN = "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda";
+    // Role ARN with permissions to invoke the target Lambda
     private static final String SCHEDULER_ROLE_ARN = "arn:aws:iam::123456789012:role/EventBridgeSchedulerRole";
+    // Reminder offset (1 hour before deadline)
     private static final long REMINDER_OFFSET_MINUTES = 60;
 
     private final SchedulerClient schedulerClient;
 
     public CreateDeadlineEvent() {
+        // Initialize AWS SDK v2 SchedulerClient
         this.schedulerClient = SchedulerClient.create();
     }
 
