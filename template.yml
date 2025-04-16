@@ -139,6 +139,9 @@ Resources:
                 - dynamodb:GetRecords
                 - dynamodb:GetShardIterator
                 - dynamodb:ListStreams
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
               Resource: !GetAtt TasksTable.StreamArn
             - Effect: Allow
               Action:
@@ -179,6 +182,9 @@ Resources:
             - Effect: Allow
               Action:
                 - sns:Publish
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
               Resource: "*"
       DeadLetterQueue:
         Type: SNS
@@ -205,6 +211,9 @@ Resources:
                 - dynamodb:GetRecords
                 - dynamodb:GetShardIterator
                 - dynamodb:ListStreams
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
               Resource: !GetAtt TasksTable.StreamArn
             - Effect: Allow
               Action:
