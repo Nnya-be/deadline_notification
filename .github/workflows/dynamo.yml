@@ -23,14 +23,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
 
-      - name: Install AWS SAM CLI and Build Project
+      - name: Install AWS SAM CLI
         run: |
           pip install aws-sam-cli
+      - name: Package Maven Project
+        run: |
+          mvn clean package
 
       - name: Build SAM Application
         run: |
-          cd deadline_notification
-          mvn clean package
           sam build --use-container
 
       - name: Debug - Check Files
