@@ -32,6 +32,7 @@ jobs:
 
       - name: Build SAM Application
         run: |
+          cd deadline_notification
           sam build --use-container
 
       - name: Debug - Check Files
