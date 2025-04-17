@@ -1,12 +1,49 @@
 AWSTemplateFormatVersion: '2010-09-09'
+
 Transform: AWS::Serverless-2016-10-31
-Description: SAM template for TasksTable with DynamoDB Streams and CreateDeadlineEvent Lambda
+
+Description: Task Management System Backend
+
+Parameters:
+  Environment:
+    Type: String
+    Default: Production
+    AllowedValues:
+      - Development
+      - Staging
+      - Production
+    Description: Environment for the deployment
+
+  AccountId:
+    Type: String
+    Default: '597088025512'
+    Description: AWS Account ID for resource ARNs
+
+  Region:
+    Type: String
+    Default: eu-central-1
+    Description: AWS Region for deployment
+
+Globals:
+  Function:
+    Runtime: java21
+    MemorySize: 512
+    Timeout: 30
+    CodeUri: DeadlineNotification/
+    Tracing: Active
+    AutoPublishAlias: live
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+    Tags:
+      Environment: !Ref Environment
+      Service: TaskManagement
 
 Resources:
   TasksTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: TasksTable
+      TableName: Tasks
       AttributeDefinitions:
         - AttributeName: taskId
           AttributeType: S
@@ -16,21 +53,54 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: false
+
+  EventBridgeSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub EventBridgeSchedulerRole-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - scheduler.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref EventBridgeSchedulerPolicy
       Tags:
         - Key: Environment
-          Value: Production
+          Value: !Ref Environment
+        - Key: Service
+          Value: TaskManagement
+
+  EventBridgeSchedulerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub EventBridgeSchedulerPolicy-${Environment}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - NotAction: "*"
+            Effect: Deny
+            Resource: "*"
 
   CreateDeadlineEventLambda:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: .
-      Handler: com.StreamLambdaHandler::handleRequest
-      Runtime: java17
-      MemorySize: 512
-      Timeout: 30
+      FunctionName: !Sub CreateDeadlineEventLambda-${Environment}
+      Handler: deadline_notification.handlers.notification.CreateDeadlineEvent::handleRequest
+      CodeUri: DeadlineNotification/
+      Description: Lambda function to create deadline events from DynamoDB Streams
+      Environment:
+        Variables:
+          SCHEDULER_ROLE_ARN: !GetAtt EventBridgeSchedulerRole.Arn
+          TARGET_LAMBDA_ARN: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ReminderProcessorLambda-${Environment}
+          TABLE_NAME: !Ref TasksTable
+          ACCOUNT_ID: !Ref AccountId
+          REGION: !Ref Region
+
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref TasksTable
@@ -41,17 +111,18 @@ Resources:
                 - dynamodb:GetRecords
                 - dynamodb:GetShardIterator
                 - dynamodb:ListStreams
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
               Resource: !GetAtt TasksTable.StreamArn
+        - Statement:
             - Effect: Allow
               Action:
                 - scheduler:CreateSchedule
-                - iam:PassRole
-              Resource:
-                - "*"
-      Environment:
-        Variables:
-          TARGET_LAMBDA_ARN: "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda"
-          SCHEDULER_ROLE_ARN: "arn:aws:iam::123456789012:role/EventBridgeSchedulerRole"
+              Resource: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/*
+            - Effect: Allow
+              Action: iam:PassRole
+              Resource: !GetAtt EventBridgeSchedulerRole.Arn
       Events:
         DynamoStream:
           Type: DynamoDB
@@ -60,43 +131,27 @@ Resources:
             StartingPosition: LATEST
             BatchSize: 10
             Enabled: true
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"dynamodb": {"NewImage": {"status": {"S": ["CREATED"]}}}}'
 
-  EventBridgeSchedulerRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - scheduler.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Policies:
-        - PolicyName: InvokeLambdaPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource:
-                  - "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda"
   ReminderProcessorLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: com.handler.ReminderProcessorLambda::handleRequest
-      Runtime: java17
-      CodeUri: .
+      FunctionName: !Sub ReminderProcessorLambda-${Environment}
+      Handler: deadline_notification.handlers.notification.ReminderProcessorLambda::handleRequest
+      CodeUri: DeadlineNotification/
       MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
-          USER_POOL_ID: "us-east-1_ExampleUserPool" # Replace with your Cognito User Pool ID
+          USER_POOL_ID: "us-east-1_ExampleUserPool" # Replace with actual Cognito User Pool ID
+          TABLE_NAME: !Ref TasksTable
+          ACCOUNT_ID: !Ref AccountId
+          REGION: !Ref Region
       Policies:
         - DynamoDBReadPolicy:
-            TableName: "TasksTable"
+            TableName: !Ref TasksTable
         - Statement:
             - Effect: Allow
               Action:
@@ -105,19 +160,20 @@ Resources:
             - Effect: Allow
               Action:
                 - sns:Publish
-              Resource: "*" #
+              Resource: "*"
+
   UpdateTaskScheduleLambda:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: com.handler.UpdateTaskScheduleLambda::handleRequest
-      Runtime: java17
-      CodeUri: .
+      FunctionName: !Sub UpdateTaskScheduleLambda-${Environment}
+      Handler: deadline_notification.handlers.notification.UpdateTaskScheduleLambda::handleRequest
+      CodeUri: DeadlineNotification/
       MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
-          TARGET_LAMBDA_ARN: "arn:aws:lambda:us-east-1:123456789012:function:ReminderProcessorLambda"
-          SCHEDULER_ROLE_ARN: "arn:aws:iam::123456789012:role/EventBridgeSchedulerRole"
+          TARGET_LAMBDA_ARN: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ReminderProcessorLambda-${Environment}
+          SCHEDULER_ROLE_ARN: !GetAtt EventBridgeSchedulerRole.Arn
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref TasksTable
@@ -144,20 +200,3 @@ Resources:
             StartingPosition: LATEST
             BatchSize: 10
             Enabled: true
-
-Outputs:
-  TasksTableArn:
-    Description: ARN of the TasksTable
-    Value: !GetAtt TasksTable.Arn
-  TasksTableStreamArn:
-    Description: ARN of the TasksTable Stream
-    Value: !GetAtt TasksTable.StreamArn
-  CreateDeadlineEventLambdaArn:
-    Description: ARN of the CreateDeadlineEvent Lambda
-    Value: !GetAtt CreateDeadlineEventLambda.Arn
-  ReminderProcessorLambdaArn:
-    Description: ARN of the ReminderProcessorLambda
-    Value: !GetAtt ReminderProcessorLambda.Arn
-  UpdateTaskScheduleLambdaArn:
-    Description: ARN of the UpdateTaskScheduleLambda
-    Value: !GetAtt UpdateTaskScheduleLambda.Arn
