@@ -38,6 +38,12 @@ public class UpdateTaskScheduleLambda implements RequestHandler<DynamodbEvent, V
 
     @Override
     public Void handleRequest(DynamodbEvent event, Context context) {
+        // Validate environment variables
+        if (TARGET_LAMBDA_ARN == null || SCHEDULER_ROLE_ARN == null) {
+            logger.error("Environment variables TARGET_LAMBDA_ARN or SCHEDULER_ROLE_ARN are not set");
+            throw new IllegalStateException("Required environment variables are not set");
+        }
+
         for (DynamodbStreamRecord record : event.getRecords()) {
             if (!"MODIFY".equals(record.getEventName())) {
                 logger.debug("Skipping non-MODIFY event: {}", record.getEventName());
@@ -47,10 +53,14 @@ public class UpdateTaskScheduleLambda implements RequestHandler<DynamodbEvent, V
             try {
                 Map<String, AttributeValue> newImage = record.getDynamodb().getNewImage();
                 Map<String, AttributeValue> oldImage = record.getDynamodb().getOldImage();
-                String taskId = newImage.get("taskId").getS();
+                String taskId = getOrNull(newImage.get("taskId"));
+                if (taskId == null) {
+                    logger.error("taskId is missing for event: {}", record);
+                    continue;
+                }
                 logger.info("Processing MODIFY event for taskId: {}", taskId);
 
-                String newStatus = newImage.getOrDefault("status", createAttr("unknown")).getS();
+                String newStatus = getOrNull(newImage.get("status"));
                 if (!ACTIVE_STATUS.equals(newStatus)) {
                     deleteSchedule(taskId);
                     logger.info("Task status {} for taskId: {}; deleted schedule", newStatus, taskId);
@@ -76,14 +86,8 @@ public class UpdateTaskScheduleLambda implements RequestHandler<DynamodbEvent, V
                     continue;
                 }
 
-                OffsetDateTime deadline;
-                try {
-                    deadline = OffsetDateTime.parse(newDeadline, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-                } catch (DateTimeParseException e) {
-                    logger.error("Invalid deadline format for taskId: {}: {}", taskId, newDeadline);
-                    deleteSchedule(taskId);
-                    continue;
-                }
+                OffsetDateTime deadline = parseDeadline(newDeadline, taskId);
+                if (deadline == null) continue;
 
                 OffsetDateTime reminderTime = deadline.minusMinutes(REMINDER_OFFSET_MINUTES);
                 OffsetDateTime now = OffsetDateTime.now();
@@ -148,13 +152,16 @@ public class UpdateTaskScheduleLambda implements RequestHandler<DynamodbEvent, V
         }
     }
 
-    private static AttributeValue createAttr(String value) {
-        AttributeValue attr = new AttributeValue();
-        attr.setS(value);
-        return attr;
-    }
-
     private static String getOrNull(AttributeValue attr) {
         return attr != null ? attr.getS() : null;
+    }
+
+    private static OffsetDateTime parseDeadline(String deadline, String taskId) {
+        try {
+            return OffsetDateTime.parse(deadline, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        } catch (DateTimeParseException e) {
+            logger.error("Invalid deadline format for taskId: {}: {}", taskId, deadline);
+            return null;
+        }
     }
 }

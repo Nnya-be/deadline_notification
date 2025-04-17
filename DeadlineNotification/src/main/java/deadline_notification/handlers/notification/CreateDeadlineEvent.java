@@ -29,7 +29,7 @@ public class CreateDeadlineEvent implements RequestHandler<DynamodbEvent, Void> 
 
     private final SchedulerClient schedulerClient;
 
-    public CreateDeadlineEvent() {
+    public CreateDeadlineEvent(SchedulerClient mockSchedulerClient) {
         this.schedulerClient = SchedulerClient.create();
     }
 

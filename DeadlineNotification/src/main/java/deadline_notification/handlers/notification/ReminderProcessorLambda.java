@@ -22,8 +22,9 @@ import java.util.Map;
 public class ReminderProcessorLambda implements RequestHandler<ScheduledEvent, Void> {
 
     private static final Logger logger = LoggerFactory.getLogger(ReminderProcessorLambda.class);
-    private static final String USER_POOL_ID = System.getenv("USER_POOL_ID"); // Replace with your Cognito User Pool ID
+    private static final String USER_POOL_ID = System.getenv("USER_POOL_ID");
     private static final String TABLE_NAME = System.getenv("TABLE_NAME");
+    private static final String SNS_TOPIC_ARN = System.getenv("SNS_TOPIC_ARN");
     private static final String ACTIVE_STATUS = "active";
 
     private final DynamoDbClient dynamoDbClient;
@@ -39,42 +40,47 @@ public class ReminderProcessorLambda implements RequestHandler<ScheduledEvent, V
     @Override
     public Void handleRequest(ScheduledEvent event, Context context) {
         try {
-            // Extract taskId from event payload
-            Map<String, Object> eventDetail = (Map<String, Object>) event.getDetail();
-            if (eventDetail == null || !eventDetail.containsKey("taskId")) {
-                logger.error("Missing taskId in event payload: {}", event);
+            if (USER_POOL_ID == null || TABLE_NAME == null || SNS_TOPIC_ARN == null) {
+                logger.error("Missing required environment variables.");
                 return null;
             }
+
+            Map<String, Object> eventDetail = (Map<String, Object>) event.getDetail();
+            if (eventDetail == null || !eventDetail.containsKey("taskId")) {
+                logger.error("Missing taskId in event payload.");
+                return null;
+            }
+
             String taskId = eventDetail.get("taskId").toString();
             logger.info("Processing reminder for taskId: {}", taskId);
 
-            // Fetch task from DynamoDB
             Map<String, AttributeValue> taskItem = getTask(taskId);
             if (taskItem == null) {
                 logger.error("Task not found for taskId: {}", taskId);
                 return null;
             }
 
-            // Verify task is active
-            String status = String.valueOf(taskItem.getOrDefault("status", AttributeValue.builder().s("unknown").build()));
-            if (!ACTIVE_STATUS.equals(status)) {
-                logger.warn("Task not active for taskId: {}, status: {}", taskId, status);
+            String status = taskItem.containsKey("status") ? taskItem.get("status").s() : "unknown";
+            if (!ACTIVE_STATUS.equalsIgnoreCase(status)) {
+                logger.warn("Task is not active for taskId: {}, status: {}", taskId, status);
                 return null;
             }
 
-            // Get assigneeId and task details
-            String assigneeId = String.valueOf(taskItem.get("assigneeId"));
-            String title = String.valueOf(taskItem.getOrDefault("title", AttributeValue.builder().s("Untitled").build()));
-            String deadline = String.valueOf(taskItem.get("deadline"));
+            String assigneeId = taskItem.containsKey("assigneeId") ? taskItem.get("assigneeId").s() : null;
+            String title = taskItem.containsKey("title") ? taskItem.get("title").s() : "Untitled";
+            String deadline = taskItem.containsKey("deadline") ? taskItem.get("deadline").s() : null;
 
-            // Fetch user email from Cognito
+            if (assigneeId == null || deadline == null) {
+                logger.error("Missing assigneeId or deadline for taskId: {}", taskId);
+                return null;
+            }
+
             String email = getUserEmail(assigneeId);
             if (email == null) {
-                logger.error("No valid email found for assigneeId: {}", assigneeId);
+                logger.error("No email found for assigneeId: {}", assigneeId);
                 return null;
             }
 
-            // Send SNS notification
             sendNotification(email, title, deadline, taskId);
 
         } catch (Exception e) {
@@ -95,8 +101,9 @@ public class ReminderProcessorLambda implements RequestHandler<ScheduledEvent, V
 
             GetItemResponse response = dynamoDbClient.getItem(request);
             return response.hasItem() ? response.item() : null;
+
         } catch (Exception e) {
-            logger.error("Error fetching task for taskId: {}: {}", taskId, e.getMessage());
+            logger.error("Failed to fetch taskId {}: {}", taskId, e.getMessage());
             return null;
         }
     }
@@ -114,10 +121,12 @@ public class ReminderProcessorLambda implements RequestHandler<ScheduledEvent, V
                     return attribute.value();
                 }
             }
-            logger.warn("No email attribute found for assigneeId: {}", assigneeId);
+
+            logger.warn("Email attribute not found for assigneeId: {}", assigneeId);
             return null;
+
         } catch (Exception e) {
-            logger.error("Error fetching user for assigneeId: {}: {}", assigneeId, e.getMessage());
+            logger.error("Failed to fetch user {}: {}", assigneeId, e.getMessage());
             return null;
         }
     }
@@ -128,13 +137,14 @@ public class ReminderProcessorLambda implements RequestHandler<ScheduledEvent, V
             PublishRequest request = PublishRequest.builder()
                     .message(message)
                     .subject("Task Reminder")
-                    .targetArn(email) // Direct email endpoint
+                    .topicArn(SNS_TOPIC_ARN)
                     .build();
 
             snsClient.publish(request);
-            logger.info("Sent notification to {} for taskId: {}", email, taskId);
+            logger.info("Notification sent to {} for taskId: {}", email, taskId);
+
         } catch (Exception e) {
-            logger.error("Failed to send notification for taskId: {} to {}: {}", taskId, email, e.getMessage());
+            logger.error("Failed to send notification for taskId {}: {}", taskId, e.getMessage());
         }
     }
 }
